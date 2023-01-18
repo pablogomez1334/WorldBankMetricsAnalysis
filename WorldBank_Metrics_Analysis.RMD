@@ -1,0 +1,260 @@
+---
+title: "World Bank Analysis"
+author: "Pablo Gomez"
+date: "2022-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library('dplyr')
+library('ggplot2')
+library('tidyr') #Using to pivot tableset
+library('stringr') #Package used to manipulate strings
+
+#Set directory to easily obtain files
+setwd('C:/Users/pgome/OneDrive/Documents/School/Arizona St/POS401') 
+GDP <- read.csv('GDP_Per_Capita_PPP.csv',skip = 4) %>%
+  select(-c(Indicator.Name,Indicator.Code,X2021))%>%
+  rename(Country_name = Country.Name,
+         Country_code = Country.Code) %>%
+  rename_with(.fn = ~str_replace(.,'X',''))%>%
+  pivot_longer(cols = "1960":"2020", names_to = "year",values_to = "GDP_Per_Capita")%>% 
+  mutate(year = as.integer(year))%>%
+  drop_na()#Change data type of year into integer for easier data manipulation
+ #Drop unnecessary null values
+
+#2. CO2 Emissions per Capita
+CO2 <- read.csv('CO2_Emissions_Per_Capita.csv',skip = 4) %>%
+  select(-c(Indicator.Name,Indicator.Code,X2021,X2020,X1960:X1989))%>%
+  rename(Country_name = Country.Name,
+        Country_code = Country.Code) %>%
+  rename_with(.fn = ~str_replace(.,'X',''))%>%
+  pivot_longer(cols = "1990":"2019", names_to = "year",values_to = "CO2_emissions")%>%
+  mutate(year = as.integer(year))%>%
+  drop_na()
+
+#3. Net Barter Terms Index. Arbitrary index that takes into account tariff rate, exports of specific goods.
+# The higher the number the "less" engaging in trade
+Trade <- read.csv('Net_Barter_Terms_Trade_index.csv',skip = 4) %>%
+  select(-c(Indicator.Name,Indicator.Code,X2021,X1960:X1999))%>%
+  rename(Country_name = Country.Name,
+         Country_code = Country.Code) %>%
+  rename_with(.fn = ~str_replace(.,'X',''))%>%
+  pivot_longer(cols = "2000":"2020", names_to = "year",values_to = "Trade_index")%>%
+  mutate(year = as.integer(year))%>%
+  drop_na()
+
+GDP <- GDP %>%
+  mutate(log_gdp = log10(GDP_Per_Capita+1), #tranform data into log10 to make the visualization more presentable
+         # Key is to display the relevant levels of magnitude for the data since it skews significantly right.
+         # Add 1 as well since some of the values are 0 and the log(0) is undefined. 
+         standard_gdp = (log_gdp - mean(log_gdp))/sd(log_gdp)) #Standardize data by centering and making sd = 1
+
+CO2 <- CO2 %>%
+  mutate(log_co2 = log10(CO2_emissions+1),
+         standard_co2 = (log_co2 - mean(log_co2))/sd(log_co2))
+
+Trade <- Trade %>%
+  mutate(standard_trade = (Trade_index-mean(Trade_index))/sd(Trade_index))
+
+data <- GDP %>% #Use left join since there is more data in the GDP data frame
+  left_join(CO2, by=c("Country_name","Country_code","year"))%>%
+  left_join(Trade, by=c("Country_name","Country_code","year"))%>%
+  drop_na()
+
+data <- data %>%
+  mutate(level_of_trade = ifelse(Trade_index >= mean(Trade_index)-sd(Trade_index)&Trade_index<=mean(Trade_index)+sd(Trade_index),
+                                 "Average",
+                                 ifelse(Trade_index<mean(Trade_index)-sd(Trade_index),
+                                        "High",
+                                        "Low")))
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Introduction
+
+Leading into the process of writing out the report for my code I first needed to identify the data I would use for 
+my analysis, specifically what analysis I could fulfill using the World Bank website. I have always been interested 
+in finding out the information regarding GDP of a given country and the relation with environmental impacts. To have 
+a *fair* or proportional analysis it is important for me to use data that included per capita, or per **Person**. 
+Also I wanted to see how trade or how globalization has an impact on the environment. Therefore I chose the 
+three variables of:
+
+1. GDP Per Capita
+2. CO2 Emissions Per Capita
+3. Net Barter Terms Trade Index
+
+I downloaded the relevant CSV files to read into a R script file. Inside the R script itself, the raw data itself from the 
+*World Bank* website itself was in wide format and not in the most optimal position for data analysis. Therefore using 
+manipulations we cleared out redundant columns in the data frame and converted the data into long format to further analyze 
+more effectively. 
+
+## Variables
+
+#### 1. GDP Per Capita
+GDP Per Capita measures the respective country GDP(*Gross Domestic Product*) per **Person**. This variable is good on the 
+surface level to evaluate how much wealth a country contains or produces per proportional indices. The units are in USD.
+
+#### 2. CO2 Emissions Per Capita
+CO2 Emissions Per Capita measures the respective amount of Carbon Dioxide(**CO2**) emitted per person per year in the 
+corresponding country. The units are in kilograms(**kg**).
+
+#### 3. Net Barter Terms Trade Index
+Net Barter Index is a arbitrary variable in purpose to measure the relative country's exports and import. The higher the score
+the less open to trade or integrated the country is. 
+
+## Munging
+Steps needed to properly format data for practical use:
+
+1. Find the 3 Variables chosen to investigate and analyze more as explained earlier
+    + GDP Per Capita
+    + CO2 Emissions Per Capita
+    + Net Barter Terms Trade Index
+  
+2. One of the variables needed to be either population or GDP Per Capita. 
+**GDP Per Capita ** was chosen
+
+3. Other two chosen variables were **CO2 Emissions Per Capita** and **Net Barter Terms Trade Index**
+
+4. Can not use lab shown variables of **electricity** and **secondary education**
+
+5. Getting the data into a tidy format various processes were used using pipes:
+    + Read CSV file using **read_csv** object with skip conditions since World Bank spreadsheets had non formatted information on the top
+    of the spreadsheet
+    + Eliminate irrelevant columns using **Select(-)**
+    + Rename Columns to ease further data manipulation using **rename()** function
+    + Specifically rename a pattern of years that started with 'X' using **rename_with()** function
+    + Format overall data from wide format into long format using **pivot_longer()**
+    + Change data type of year into integer for easier data manipulation using **mutate()**
+    + eliminate any null containing data using **drop_na**
+  
+6. **Log10** transform variables to clearly display the significance of levels in magnitude. Since a lot of the data, especially containing 
+GDP and CO2 emission calculations, is heavily skewed right, on a graph the output is not aesthetically pleasing. Therefore a log transformation
+does not change much fundamentally the data but helps display relevant information.
+
+7. Center and standardize all variables for easier graph display for clear message intention. Centering and standardizing is use to transform data to
+further help the curve resemble a normal distribution when looking at the histogram of the variable. Therefor we use following:
+
+  $Z = \frac{x-\overline{x}}{\sigma}$
+
+  + $\overline{x}$ - Mean
+  + $\sigma$ - Standard Deviation
+
+8. Merge all data frames together using **Joins** by matching one data fame with the others corresponding *Country*,*Country Code*, and *Year*.
+
+9. Display data using **print(data)**
+
+## Findings
+
+```{r,echo=FALSE, fig.align='center'}
+data <- data %>%
+  filter(year >= 2017)%>%
+  drop_na()#Use year 2017 and on to not crowd the data in the visualization
+
+
+ggplot(data,aes(log_gdp,log_co2,color = Trade_index,shape = level_of_trade))+
+geom_point(size = 2.6)+
+scale_color_steps2(low = 'red',mid = 'blue',high = 'green',midpoint = median(data$Trade_index))+
+theme(legend.position = 'bottom',axis.ticks=element_blank(),
+      panel.background = element_rect(fill = 'white',colour = 'black'),
+      panel.grid.major = element_line(colour = 'grey'),
+      legend.key.width = unit(.6,'cm'))+
+labs(x = 'GDP Per Capita',
+     y= 'CO2 Emissions Per Capita',
+     title = 'GDP Per Capita vs. CO2 Emissions Per Capita ',
+     color = 'Trade Index Scale',
+     shape = 'Level of Trade')
+```
+* We can clearly see a correlation between GDP and CO2 emission. With the more increase in GDP, the more in the increase in CO2 emission.
+  
+* The graph also tries to illustrate a relationship between trade with GDP and CO2 emissions. There is no clear relationship with the Trade index variable.
+
+```{r,echo=FALSE, fig.align='center',message=FALSE}
+top_20_bottom <- CO2 %>%
+  group_by(year)%>%
+  summarise(top_10 = quantile(CO2_emissions,probs = .9),bottom_10 = quantile(CO2_emissions,probs=.1),average = mean(CO2_emissions))
+
+CO2 %>%
+  left_join(top_20_bottom,by='year')%>%
+  mutate(rank = ifelse(CO2_emissions>= top_10,'Top 10%',ifelse(CO2_emissions<= bottom_10,'Bottom 10%','Middle 80%')))%>%
+  group_by(year,rank)%>%
+  summarise(emissions = median(CO2_emissions), central = average)%>%
+  ggplot(aes(year,emissions,color = rank))+geom_line()+geom_line(aes(year,central,color = 'Median'))+
+  theme(legend.position = 'bottom',axis.ticks=element_blank(),
+      panel.background = element_rect(fill = 'white',colour = 'black'),
+      panel.grid.major = element_line(colour = 'grey'),
+      legend.key.width = unit(.6,'cm'))+
+  labs(x = 'Year',
+     y= 'CO2 Emissions',
+     title = 'CO2 Per Capita Emissions Over Time',
+     color = 'Percent Rank of Emitters')
+```
+* We see in this visualization an illustration of CO2 emissions ordered by levels of magnitude in ranking percentile of polluters. 
+
+* We clearly see the inequality of how much the top 10% of polluters emitted CO2 compared to the others.  
+
+```{r,echo=FALSE, fig.align='center',message=FALSE}
+total_emissions <- CO2 %>%
+  group_by(year)%>%
+  summarise(total_emissions = sum(CO2_emissions))
+
+CO2_quantile <-CO2%>%
+  left_join(total_emissions,by = 'year')%>%
+  mutate(percent_total_emissions = CO2_emissions/total_emissions)%>%
+  group_by(year)%>%
+  summarise(top_10 = quantile(percent_total_emissions,probs = .9))
+
+CO2 %>%
+  left_join(CO2_quantile,by = 'year')%>%
+  left_join(total_emissions,by = 'year')%>%
+  mutate(percent_total_emissions = CO2_emissions/total_emissions,
+         percentile_label = ifelse(percent_total_emissions >= top_10,'Top 10%',
+                                   'Bottom 90%'))%>%
+  group_by(year,percentile_label)%>%
+  summarise(total = sum(percent_total_emissions))%>%
+  filter(percentile_label == 'Top 10%')%>%
+  ggplot(aes(year,total)) + 
+  geom_line()+
+  scale_y_continuous(labels = scales::percent)+
+  theme(legend.position = 'bottom',axis.ticks=element_blank(),
+      panel.background = element_rect(fill = 'white',colour = 'black'),
+      panel.grid.major = element_line(colour = 'grey'),
+      legend.key.width = unit(.6,'cm'))+
+  labs(x = 'Year',
+     y= 'Percent Of Total Emissions',
+     title = 'Pecent of Total CO2 Per Capita Emissions over time for Top 10% of emitters',
+     color = 'Percentile of Emitters')
+  
+```
+* We see in this visualization an illustration of the percentage of the total emittions of a given year of the top 10% of emitters over time.
+
+* We want to identify a relationship in how much the top emitting countries contrbute to the overall CO2 global emittions.
+
+* The trend we clearly see is that starting from the 1990's the top 10% of emitting countries have decreased in overall share of Global pollution. Noticably is that the share of the total polution is still really large as depicted in the previous graph. 
+
+## Literature
+
+Finding Scholarly Works we see the following that associate the findings of above:
+
+1. The first article by Najid Ahmad: https://www.sciencedirect.com/science/article/pii/S0360544216319119, describes an economist theory of Kuznets curve and how that describes the relationship between income and environmental impact. The Kuznets curve argues that the increase in GDP growth increases environmental damage, but inversely overtime, there is a certain economic development point to which the more increase in GDP actually improves environmental impact. In the article, the use of Croatia as an example that supports this Kuznets curve validifies it. 
+
+2. The second article finds a second analysis of a similar relation to the Kuznets curve in Brazil during the mid to late 2000's: https://www.sciencedirect.com/science/article/pii/S0921800911000838. Luciano Charlita de Freitas found that the variables moved away from each other than in a parallel manner when the GDP of the country increased. The article contributes reforms in the energy sector as to reasons why the effect took place and to why privatization of energy sectors lead to the change. 
+
+## Conclusion
+
+In this analysis we try to find a correlation between GDP and CO2 emissions. In the pre-analysis stage it would have made sense to assume the more increase in GDP results increase to CO2 emissions. The first visualization illustrates a exponential relationship. As you look into it more the observation is not as black and white as it appears. Yes the top emitters have significant levels of magnitude to the reset of the world when it comes to CO2 emissions but a percent of the overall analysis finds the share of the total emissions is falling. Developing countries are now increasing the CO2 emissions as they develop their respective economies. Nonetheless the top emitters carry a lot of the responsibility in emissions since they clearly propagate this inequality in energy consumption. A Kuznets curve can find that after a certain level of development, the top emitters can reduce the emissions using the capital they have amassed over time. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
