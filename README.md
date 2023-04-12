@@ -1,2 +1,2 @@
 # WorldBankMetricsAnalysis
-Analysis using various World Bank variables
+The analysis starts by selecting three variables from the World Bank data - GDP per capita, CO2 emissions per capita, and net barter terms trade index - to investigate their relationship with environmental impacts. The data is downloaded in CSV format and read into an R script for analysis. The data is initially in wide format, so redundant columns are removed and the data is converted into long format for effective analysis.
